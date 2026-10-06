@@ -1,0 +1,1510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Smart Log Sanitizer</title>
+  <script>
+    try {
+      var saved = JSON.parse(localStorage.getItem('log-sanitizer-settings-v1') || 'null');
+      var theme = saved && saved.theme;
+      var dark = theme ? theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+      document.documentElement.classList.toggle('dark', !!dark);
+    } catch (e) {
+      document.documentElement.classList.add('dark');
+    }
+  </script>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg0: #f4f2fb;
+      --card: rgba(255, 255, 255, .78);
+      --card-solid: #ffffff;
+      --field: #f8f7fc;
+      --ink: #1b1730;
+      --muted: #615b78;
+      --faint: #8a849f;
+      --line: rgba(38, 24, 72, .12);
+      --grid: rgba(38, 24, 72, .06);
+      --accent: #6d28d9;
+      --shadow: 0 18px 50px rgba(64, 28, 110, .08);
+      --sans: "Segoe UI", "Avenir Next", "Helvetica Neue", sans-serif;
+      --mono: "Cascadia Code", "JetBrains Mono", "SFMono-Regular", ui-monospace, monospace;
+    }
+    html.dark {
+      color-scheme: dark;
+      --bg0: #07060d;
+      --card: rgba(16, 14, 26, .78);
+      --card-solid: #14121c;
+      --field: #0d0b14;
+      --ink: #f6f3ff;
+      --muted: #b7b0c9;
+      --faint: #8d86a3;
+      --line: rgba(255, 255, 255, .1);
+      --grid: rgba(255, 255, 255, .045);
+      --accent: #c4b5fd;
+      --shadow: 0 24px 60px rgba(0, 0, 0, .35);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      font-family: var(--sans);
+      font-size: 15px;
+      line-height: 1.5;
+      color: var(--ink);
+      background: var(--bg0);
+    }
+    body::before,
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+    }
+    body::before {
+      background:
+        radial-gradient(900px 480px at -10% -10%, rgba(124, 58, 237, .34), transparent 55%),
+        radial-gradient(720px 420px at 110% 0%, rgba(244, 63, 94, .18), transparent 50%),
+        radial-gradient(800px 520px at 80% 110%, rgba(34, 211, 238, .12), transparent 46%),
+        var(--bg0);
+    }
+    body::after {
+      background-image:
+        linear-gradient(var(--grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+      background-size: 56px 56px;
+      mask-image: radial-gradient(circle at 50% 18%, #000 15%, transparent 78%);
+      opacity: .7;
+    }
+    ::selection { background: rgba(124, 58, 237, .28); }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    button, input, textarea { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    button:disabled { opacity: .48; cursor: not-allowed; }
+    .wrap { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 28px 0 80px; }
+    .top { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; margin-bottom: 22px; }
+    .brand { display: flex; gap: 14px; align-items: flex-start; }
+    .mark {
+      width: 48px; height: 48px; border-radius: 16px; display: grid; place-items: center; flex: none;
+      background: linear-gradient(135deg, #7c3aed, #db2777);
+      box-shadow: 0 12px 28px rgba(124, 58, 237, .35);
+    }
+    .eyebrow { margin: 0 0 4px; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+    h1 { margin: 0; font-size: 36px; letter-spacing: -.045em; line-height: 1.02; }
+    @supports ((-webkit-background-clip: text) or (background-clip: text)) {
+      h1 {
+        background: linear-gradient(100deg, var(--ink) 10%, #8b5cf6 55%, #fb7185);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+    }
+    .lede { margin: 8px 0 0; max-width: 52ch; color: var(--muted); }
+    .top-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    .badge, .theme {
+      border: 1px solid var(--line);
+      background: var(--card);
+      backdrop-filter: blur(16px);
+      border-radius: 999px;
+    }
+    .badge { padding: 6px 10px; color: var(--muted); font-size: 12px; font-weight: 600; }
+    .theme {
+      width: 42px; height: 42px; display: grid; place-items: center; border-radius: 14px; color: var(--ink);
+    }
+    .theme:hover, .btn:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+    .workspace { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+    .card {
+      position: relative;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+      padding: 16px;
+      min-width: 0;
+    }
+    .card::before {
+      content: "";
+      position: absolute;
+      left: 18px; right: 18px; top: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(167, 139, 250, .95), transparent);
+    }
+    .drop.dragover { border-color: #a78bfa; box-shadow: 0 0 0 4px rgba(167, 139, 250, .25); }
+    .card-head, .split-head { display: flex; justify-content: space-between; gap: 10px; align-items: center; margin-bottom: 10px; }
+    h2 { margin: 0; font-size: 16px; letter-spacing: -.02em; }
+    .meta { color: var(--faint); font-size: 12px; }
+    textarea, input[type="text"] {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: var(--field);
+      border-radius: 14px;
+      padding: 12px 14px;
+    }
+    textarea:focus, input[type="text"]:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+    }
+    textarea.editor, .preview {
+      font-family: var(--mono);
+      font-size: 12.5px;
+      line-height: 1.55;
+      min-height: 360px;
+      max-height: 520px;
+    }
+    textarea.editor { display: block; resize: vertical; height: 420px; }
+    textarea[readonly] { cursor: default; }
+    .preview {
+      margin: 0;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      border: 1px solid var(--line);
+      background: var(--field);
+      border-radius: 14px;
+      padding: 12px 14px;
+    }
+    .progress { height: 3px; border-radius: 99px; background: var(--line); overflow: hidden; display: none; margin: 8px 0; }
+    .progress.on { display: block; }
+    .progress span {
+      display: block; height: 100%; width: 38%;
+      background: linear-gradient(90deg, #7c3aed, #db2777);
+      animation: slide 1s ease-in-out infinite;
+    }
+    @keyframes slide {
+      from { transform: translateX(-120%); }
+      to { transform: translateX(320%); }
+    }
+    .tabs { display: flex; gap: 4px; padding: 4px; background: var(--field); border-radius: 12px; margin-bottom: 10px; }
+    .tabs button {
+      flex: 1; border: 0; background: transparent; color: var(--muted);
+      border-radius: 9px; padding: 8px 6px; font-weight: 700; font-size: 13px;
+    }
+    .tabs button[aria-selected="true"] { background: var(--card-solid); color: var(--ink); box-shadow: var(--shadow); }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .btn, .btn-primary {
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-weight: 700;
+      font-size: 14px;
+    }
+    .btn { border: 1px solid var(--line); background: var(--card-solid); }
+    .btn-primary {
+      width: 100%;
+      border: 0;
+      color: white;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 16px;
+      font-size: 16px;
+      background: linear-gradient(135deg, #7c3aed, #db2777 70%);
+      box-shadow: 0 12px 30px rgba(124, 58, 237, .32);
+    }
+    .btn-primary:hover:not(:disabled) { filter: brightness(1.06); }
+    .btn-primary kbd {
+      font-family: var(--mono);
+      font-size: 11px;
+      border: 1px solid rgba(255, 255, 255, .35);
+      border-bottom-width: 2px;
+      border-radius: 7px;
+      padding: 3px 6px;
+      color: white;
+    }
+    .launch { grid-column: 1 / -1; }
+    #runState { margin: 8px 0 0; color: var(--muted); font-size: 13px; min-height: 1.3em; }
+    .stats { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .stats:empty, .stats[hidden] { display: none; }
+    .pill {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 10px; border-radius: 999px;
+      background: var(--card-solid); border: 1px solid var(--line); font-size: 13px;
+    }
+    .pill i, .legend i { display: block; border-radius: 99px; }
+    .pill i { width: 8px; height: 8px; background: var(--accent); }
+    .legend { display: flex; flex-wrap: wrap; gap: 8px 12px; padding: 0; margin: 10px 0 0; list-style: none; color: var(--muted); font-size: 12px; }
+    .legend li { display: flex; align-items: center; gap: 6px; }
+    .legend i { width: 12px; height: 12px; border-radius: 4px; }
+    .legend .hl-ipv4, mark.hl-ipv4 { background: color-mix(in srgb, #fb7185 38%, transparent); }
+    .legend .hl-ipv6, mark.hl-ipv6 { background: color-mix(in srgb, #fb923c 40%, transparent); }
+    .legend .hl-host, mark.hl-host { background: color-mix(in srgb, #fbbf24 42%, transparent); }
+    .legend .hl-email, mark.hl-email { background: color-mix(in srgb, #f472b6 40%, transparent); }
+    .legend .hl-mac, mark.hl-mac { background: color-mix(in srgb, #a3e635 40%, transparent); }
+    .legend .hl-jwt, .legend .hl-token, .legend .hl-secret, .legend .hl-aws, .legend .hl-pkey,
+    mark.hl-jwt, mark.hl-token, mark.hl-secret, mark.hl-aws, mark.hl-pkey { background: color-mix(in srgb, #a78bfa 42%, transparent); }
+    .legend .hl-user, mark.hl-user { background: color-mix(in srgb, #38bdf8 40%, transparent); }
+    .legend .hl-cred, mark.hl-cred { background: color-mix(in srgb, #fb7185 42%, transparent); }
+    .legend .hl-custom, mark.hl-custom { background: color-mix(in srgb, #34d399 40%, transparent); }
+    .pill[data-type="ipv4"] i { background: #fb7185; }
+    .pill[data-type="ipv6"] i { background: #fb923c; }
+    .pill[data-type="host"] i { background: #fbbf24; }
+    .pill[data-type="email"] i { background: #f472b6; }
+    .pill[data-type="mac"] i { background: #a3e635; }
+    .pill[data-type="jwt"] i, .pill[data-type="token"] i, .pill[data-type="secret"] i, .pill[data-type="aws"] i, .pill[data-type="pkey"] i { background: #a78bfa; }
+    .pill[data-type="user"] i { background: #38bdf8; }
+    .pill[data-type="cred"] i { background: #fb7185; }
+    .pill[data-type="custom"] i { background: #34d399; }
+    .pill[data-type="total"] i { background: #7c3aed; }
+    .pill[data-type="alias"] i { background: #22d3ee; }
+    .pill[data-type="kept"] i, .pill[data-type="ansi"] i { background: #94a3b8; }
+    mark.hl { color: inherit; border-radius: 4px; padding: 0 1px; font: inherit; }
+    .settings { margin-top: 16px; }
+    .section { margin-top: 18px; }
+    .section > h2, .section > .section-title {
+      margin: 0 0 10px;
+      font-size: 12px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--faint);
+    }
+    .checks, .modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .check, .mode {
+      display: flex; gap: 10px; align-items: flex-start;
+      padding: 12px; border: 1px solid var(--line); border-radius: 14px;
+      background: var(--field); cursor: pointer;
+    }
+    .check input, .mode input, .inline input { accent-color: #7c3aed; margin-top: 2px; }
+    .check span, .mode span { display: grid; gap: 2px; }
+    .check strong, .mode strong { font-size: 14px; }
+    .check small, .mode small, .hint, .field small { color: var(--muted); font-size: 12px; line-height: 1.4; }
+    .mode:has(input:checked), .check:has(input:checked) {
+      border-color: color-mix(in srgb, #8b5cf6 65%, var(--line));
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, #8b5cf6 45%, transparent);
+    }
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .field { display: grid; gap: 6px; }
+    .field label { font-weight: 700; font-size: 14px; }
+    .settings textarea { min-height: 120px; resize: vertical; font-family: var(--mono); font-size: 13px; }
+    .settings input[type="text"] { font-family: var(--mono); font-size: 13px; }
+    .field.is-off { opacity: .55; }
+    .options { display: flex; flex-wrap: wrap; gap: 14px 18px; margin-top: 8px; }
+    .inline { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+    .notes { margin-top: 16px; }
+    .notes summary { cursor: pointer; color: var(--muted); font-weight: 700; }
+    .notes ul { margin: 8px 0 0; padding-left: 18px; color: var(--muted); }
+    .table-wrap { max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 14px; }
+    table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12.5px; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { font-family: var(--sans); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); position: sticky; top: 0; background: var(--card-solid); }
+    td:first-child { font-weight: 700; white-space: nowrap; }
+    td.value { word-break: break-all; }
+    .warn {
+      color: #9a3412;
+      background: rgba(251, 191, 36, .14);
+      border: 1px solid rgba(245, 158, 11, .35);
+      padding: 10px 12px;
+      border-radius: 12px;
+      font-size: 13px;
+    }
+    html.dark .warn { color: #fcd34d; }
+    .empty { color: var(--muted); margin: 8px 0; }
+    footer { margin-top: 16px; color: var(--faint); font-size: 12px; }
+    #toast {
+      position: fixed; left: 50%; bottom: 18px; z-index: 5;
+      transform: translateX(-50%) translateY(10px);
+      background: #18181b; color: white;
+      padding: 10px 14px; border-radius: 999px;
+      font-size: 13px; font-weight: 600;
+      opacity: 0; pointer-events: none;
+      transition: opacity .2s ease, transform .2s ease;
+      max-width: min(520px, calc(100% - 24px));
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    @media (max-width: 980px) {
+      .workspace, .checks, .modes, .split { grid-template-columns: 1fr; }
+      .top { flex-direction: column; }
+      h1 { font-size: 30px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <div class="brand">
+        <div class="mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22">
+            <path fill="none" stroke="#fff" stroke-width="1.8" d="M12 3.5 19 6.2v5.3c0 4.2-2.8 7.2-7 8.9-4.2-1.7-7-4.7-7-8.9V6.2L12 3.5z"/>
+            <path fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" d="m8.8 12.1 2.2 2.2 4.3-4.6"/>
+          </svg>
+        </div>
+        <div>
+          <p class="eyebrow">Private log redaction</p>
+          <h1>Smart Log Sanitizer</h1>
+          <p class="lede">Strip addresses, hostnames, and secrets before a log is shared. Matching stays in this tab, and the cleaned file does not include the alias map.</p>
+        </div>
+      </div>
+      <div class="top-actions">
+        <span class="badge">Runs locally</span>
+        <span class="badge">Nothing uploaded</span>
+        <button type="button" class="theme" id="themeBtn" aria-pressed="true" aria-label="Switch theme"></button>
+      </div>
+    </header>
+
+    <form id="app" autocomplete="off" novalidate>
+      <div class="workspace">
+        <section class="card drop" id="dropZone">
+          <div class="card-head">
+            <div>
+              <h2>Input</h2>
+              <div class="meta" id="fileMeta">No file loaded</div>
+            </div>
+            <div class="actions" style="margin:0">
+              <button type="button" class="btn" id="browseBtn">Browse</button>
+              <button type="button" class="btn" id="sampleBtn">Load sample</button>
+            </div>
+          </div>
+          <input type="file" id="fileInput" hidden accept=".txt,.log,.csv,.out,.json,.yaml,.yml,.conf,.service">
+          <div class="progress" id="progress" role="progressbar" aria-label="Working"><span></span></div>
+          <textarea id="input" class="editor" spellcheck="false" placeholder="Paste a log, or drop a text file. Dates, filenames, and hyphenated words stay. IPs, hosts, emails, and secrets go."></textarea>
+          <div class="meta" id="inCount" style="margin-top:8px">Empty</div>
+        </section>
+
+        <section class="card">
+          <div class="card-head">
+            <h2>Output</h2>
+            <div class="meta" id="outCount">Empty</div>
+          </div>
+          <div class="tabs" role="tablist" aria-label="Output views">
+            <button type="button" role="tab" id="tab-clean" data-tab="clean" aria-controls="panel-clean" aria-selected="true">Cleaned</button>
+            <button type="button" role="tab" id="tab-match" data-tab="match" aria-controls="panel-match" aria-selected="false">Matches</button>
+            <button type="button" role="tab" id="tab-map" data-tab="map" aria-controls="panel-map" aria-selected="false">Alias map</button>
+          </div>
+          <div id="panel-clean" role="tabpanel" aria-labelledby="tab-clean">
+            <textarea id="output" class="editor" readonly spellcheck="false" placeholder="Cleaned log appears here."></textarea>
+          </div>
+          <div id="panel-match" role="tabpanel" aria-labelledby="tab-match" hidden>
+            <pre id="preview" class="preview">Clean a log to highlight what will be removed.</pre>
+            <ul class="legend">
+              <li><i class="hl-ipv4"></i>IPv4</li>
+              <li><i class="hl-ipv6"></i>IPv6</li>
+              <li><i class="hl-host"></i>Host</li>
+              <li><i class="hl-email"></i>Email</li>
+              <li><i class="hl-mac"></i>MAC</li>
+              <li><i class="hl-jwt"></i>JWT</li>
+              <li><i class="hl-token"></i>Bearer</li>
+              <li><i class="hl-secret"></i>Secret</li>
+              <li><i class="hl-aws"></i>AWS</li>
+              <li><i class="hl-pkey"></i>Key</li>
+              <li><i class="hl-user"></i>Home</li>
+              <li><i class="hl-cred"></i>URL login</li>
+              <li><i class="hl-custom"></i>Custom</li>
+            </ul>
+          </div>
+          <div id="panel-map" role="tabpanel" aria-labelledby="tab-map" hidden>
+            <p class="warn">This map restores every redacted value. It stays on this page and is not part of the download.</p>
+            <p class="empty" id="mapEmpty">Stable aliases show up here after a clean in that mode.</p>
+            <p class="hint" id="mapMeta"></p>
+            <div class="table-wrap" id="mapWrap" hidden>
+              <table>
+                <thead><tr><th>Alias</th><th>Type</th><th>Original</th></tr></thead>
+                <tbody id="mapBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="actions">
+            <button type="button" class="btn" id="copyBtn" disabled>Copy</button>
+            <button type="button" class="btn" id="downloadBtn" disabled>Download</button>
+            <button type="button" class="btn" id="copyMapBtn" disabled>Copy alias map</button>
+            <button type="button" class="btn" id="clearBtn">Clear logs</button>
+          </div>
+        </section>
+
+        <div class="launch">
+          <button type="submit" class="btn-primary" id="cleanBtn"><span class="label">Clean log</span><kbd id="kbd">Ctrl Enter</kbd></button>
+          <p id="runState">Paste a log, then clean it.</p>
+          <div class="stats" id="stats" hidden></div>
+        </div>
+      </div>
+
+      <section class="card settings">
+        <h2>Sanitizer settings</h2>
+        <div class="section">
+          <h2>Detectors</h2>
+          <div class="checks">
+            <label class="check"><input type="checkbox" data-detector="ipv4" checked><span><strong>IPv4 addresses</strong><small>Valid octets and CIDR. Skips version 1.2.3.4 and v1.2.3.4.</small></span></label>
+            <label class="check"><input type="checkbox" data-detector="ipv6" checked><span><strong>IPv6 addresses</strong><small>Full, compressed, zone, and IPv4-mapped forms.</small></span></label>
+            <label class="check"><input type="checkbox" data-detector="host" checked><span><strong>Hostnames and domains</strong><small>Public and internal names. Filenames such as error.log stay.</small></span></label>
+            <label class="check"><input type="checkbox" data-detector="email" checked><span><strong>Email addresses</strong><small>Removes the whole address, not just the domain.</small></span></label>
+            <label class="check"><input type="checkbox" data-detector="mac" checked><span><strong>MAC addresses</strong><small>Colon, dash, and Cisco dotted forms.</small></span></label>
+            <label class="check"><input type="checkbox" data-detector="jwt" checked><span><strong>JSON Web Tokens</strong><small>Three-part tokens that start with eyJ.</small></span></label>
+            <label class="check"><input type="checkbox" data-detector="aws" checked><span><strong>AWS access key IDs</strong><small>AKIA, ASIA, ABIA, and ACCA key ids.</small></span></label>
+            <label class="check"><input type="checkbox" data-detector="bearer" checked><span><strong>Bearer tokens</strong><small>Opaque tokens after Bearer. JWTs keep the JWT label.</small></span></label>
+            <label class="check"><input type="checkbox" data-detector="secret" checked><span><strong>Passwords and API keys</strong><small>Values after password=, token=, secret=, or api_key=.</small></span></label>
+            <label class="check"><input type="checkbox" data-detector="privateKey" checked><span><strong>Private keys</strong><small>PEM blocks, including OpenSSH keys.</small></span></label>
+            <label class="check"><input type="checkbox" data-detector="home" checked><span><strong>Home directory names</strong><small>/home, /Users, and C:\Users usernames.</small></span></label>
+            <label class="check"><input type="checkbox" data-detector="urlCred" checked><span><strong>URL usernames and passwords</strong><small>user:password@ in front of a host.</small></span></label>
+            <label class="check"><input type="checkbox" data-detector="ansi"><span><strong>Strip ANSI color codes</strong><small>Terminal colors are removed before the other rules run.</small></span></label>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2>Replacement</h2>
+          <div class="modes" role="radiogroup" aria-label="Replacement style">
+            <label class="mode"><input type="radio" name="mode" value="typed" checked><span><strong>Typed labels</strong><small>[IP], [HOST], [EMAIL], and one label per kind.</small></span></label>
+            <label class="mode"><input type="radio" name="mode" value="alias"><span><strong>Stable aliases</strong><small>ip-1, host-2. The same value always gets the same alias.</small></span></label>
+            <label class="mode"><input type="radio" name="mode" value="custom"><span><strong>One label</strong><small>Replace every match with the text below.</small></span></label>
+          </div>
+          <div class="field" id="replacementField" style="margin-top:12px">
+            <label for="replacement">Replacement text</label>
+            <input type="text" id="replacement" value="[REDACTED]" spellcheck="false">
+            <small>Used only for “One label”. Leave it empty to delete the match. Characters such as $&amp; are written literally.</small>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2>Allowlist and custom strings</h2>
+          <div class="split">
+            <div class="field">
+              <label for="allow">Keep these</label>
+              <textarea id="allow" spellcheck="false" placeholder="example.com&#10;10.0.0.1"></textarea>
+              <small>One entry per line. A domain also keeps its subdomains. These spans are never replaced.</small>
+            </div>
+            <div class="field">
+              <label for="custom">Also remove</label>
+              <textarea id="custom" spellcheck="false" placeholder="acme-west&#10;internal-codename"></textarea>
+              <small>One entry per line. Longer entries win. Whole word is the default, so log does not remove login.</small>
+            </div>
+          </div>
+          <div class="options">
+            <label class="inline"><input type="checkbox" id="whole" checked> Whole word</label>
+            <label class="inline"><input type="checkbox" id="caseSens"> Case sensitive</label>
+            <label class="inline"><input type="checkbox" id="live"> Update as you type</label>
+          </div>
+          <div class="field" style="margin-top:12px">
+            <label for="tlds">Extra domain suffixes</label>
+            <input type="text" id="tlds" spellcheck="false" placeholder="corp, acme">
+            <small>Comma or space separated. Use this for internal suffixes that are not already recognized.</small>
+          </div>
+        </div>
+
+        <details class="notes">
+          <summary>What stays in the log</summary>
+          <ul>
+            <li>Dates and hyphenated words, such as 2024-10-02 and out-of-memory.</li>
+            <li>Filenames such as error.log, Node.js, config.yaml, and foreman.service.</li>
+            <li>Version numbers written as version 1.2.3.4 or v1.2.3.4.</li>
+            <li>Allowlisted text, including subdomains of an allowlisted domain.</li>
+            <li>A name like script.sh can look like a domain. Add it to the allowlist if you need to keep it.</li>
+          </ul>
+        </details>
+        <div class="actions">
+          <button type="button" class="btn" id="resetBtn">Reset settings</button>
+        </div>
+      </section>
+    </form>
+    <footer>Cleaning runs in this browser tab. Logs are not uploaded and are not saved. Settings stay in local storage on this computer. Large logs are cleaned on a background thread.</footer>
+  </div>
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <script id="engine">
+    const sanitizeLog = (() => {
+      const FILE_EXT = new Set('log txt json yaml yml xml csv md markdown html htm css scss js jsx ts tsx mjs cjs py rb php go rs java kt c h cpp hpp cs sql pem crt cer csr conf cfg ini service socket timer target mount path unit toml env bak old tmp pid sock gz tgz zip tar bz2 xz 7z png jpg jpeg gif svg webp ico pdf woff woff2 ttf eot lock out err rpm deb so dll exe bin dat idx iso img wal sqlite db dump core sum sha256 md5 key'.split(' '));
+      const BASE_TLDS = new Set('com net org edu gov mil int info biz name pro io dev app ai cloud online site tech xyz page uk us eu de fr nl ca au jp br in se no fi es it pl ch at be cz dk pt ie nz sg hk co tv me cc sh local internal lan corp intranet localdomain lab test example invalid localhost home arpa'.split(/\s+/));
+      const OCTET = '(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)';
+
+      function escapeRegExp(value) {
+        return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      }
+
+      function ipv4Literal(value) {
+        return new RegExp('^(?:' + OCTET + '\\.){3}' + OCTET + '$').test(value);
+      }
+
+      function ipv6Ok(raw) {
+        let value = raw;
+        const zoneAt = value.indexOf('%');
+        if (zoneAt !== -1) {
+          if (value.indexOf('%', zoneAt + 1) !== -1) return false;
+          if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$/.test(value.slice(zoneAt + 1))) return false;
+          value = value.slice(0, zoneAt);
+        }
+        if (!value || value === '::') return false;
+        if (!/^[0-9a-fA-F:.]+$/.test(value)) return false;
+        const halves = value.split('::');
+        if (halves.length > 2) return false;
+
+        function side(part, allowV4) {
+          if (part === '') return { ok: true, n: 0 };
+          const bits = part.split(':');
+          let n = 0;
+          for (let i = 0; i < bits.length; i++) {
+            const bit = bits[i];
+            if (allowV4 && i === bits.length - 1 && bit.indexOf('.') !== -1) {
+              if (!ipv4Literal(bit)) return { ok: false, n: 0 };
+              n += 2;
+            } else if (!/^[0-9a-fA-F]{1,4}$/.test(bit)) {
+              return { ok: false, n: 0 };
+            } else {
+              n += 1;
+            }
+          }
+          return { ok: true, n: n };
+        }
+
+        if (halves.length === 1) {
+          const parsed = side(value, true);
+          return parsed.ok && parsed.n === 8;
+        }
+        const left = side(halves[0], false);
+        const right = side(halves[1], true);
+        return left.ok && right.ok && left.n + right.n < 8;
+      }
+
+      function ipv6PrefixLength(value) {
+        const limit = Math.min(value.length, 128);
+        let best = 0;
+        for (let i = limit; i >= 2; i--) {
+          if (ipv6Ok(value.slice(0, i))) {
+            best = i;
+            break;
+          }
+        }
+        if (!best) return 0;
+        const next = value.charAt(best);
+        if (next && /[0-9A-Fa-f:%]/.test(next)) return 0;
+        return best;
+      }
+
+      function hostnameLength(value, tlds) {
+        if (!value || value.length > 253) return 0;
+        const labels = value.split('.');
+        while (labels.length >= 2) {
+          const last = labels[labels.length - 1].toLowerCase();
+          if (FILE_EXT.has(last) && !tlds.has(last)) labels.pop();
+          else break;
+        }
+        if (labels.length < 2) return 0;
+        const tld = labels[labels.length - 1];
+        const tldLower = tld.toLowerCase();
+        if (!tlds.has(tldLower)) return 0;
+        if (/[a-z]/.test(tld) && /[A-Z]/.test(tld)) return 0;
+        if (FILE_EXT.has(tldLower) && labels.length === 2) return 0;
+        for (let i = 0; i < labels.length; i++) {
+          if (!/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/.test(labels[i])) return 0;
+        }
+        const host = labels.join('.');
+        return host.length > 253 ? 0 : host.length;
+      }
+
+      function extraTldList(raw) {
+        return String(raw || '').split(/[\s,]+/).map(function (item) {
+          return item.trim().replace(/^\./, '').toLowerCase();
+        }).filter(function (item) {
+          return /^[a-z0-9-]{2,24}$/.test(item);
+        });
+      }
+
+      function normalize(raw) {
+        const source = raw || {};
+        const flags = source.detectors || {};
+        function on(name, fallback) {
+          return Object.prototype.hasOwnProperty.call(flags, name) ? !!flags[name] : fallback;
+        }
+        const mode = source.mode === 'alias' || source.mode === 'custom' ? source.mode : 'typed';
+        return {
+          detectors: {
+            ipv4: on('ipv4', true),
+            ipv6: on('ipv6', true),
+            host: on('host', true),
+            email: on('email', true),
+            mac: on('mac', true),
+            jwt: on('jwt', true),
+            aws: on('aws', true),
+            bearer: on('bearer', true),
+            secret: on('secret', true),
+            privateKey: on('privateKey', true),
+            home: on('home', true),
+            urlCred: on('urlCred', true),
+            ansi: on('ansi', false)
+          },
+          mode: mode,
+          replacement: source.replacement == null ? '[REDACTED]' : String(source.replacement).trim(),
+          customStrings: String(source.customStrings || ''),
+          customWholeWord: source.customWholeWord !== false,
+          customCaseSensitive: !!source.customCaseSensitive,
+          allowlist: String(source.allowlist || ''),
+          extraTlds: String(source.extraTlds || '')
+        };
+      }
+
+      function groupSpan(match, startGroup, endGroup) {
+        if (!startGroup) return [match.index, match.index + match[0].length];
+        if (match.indices && match.indices[startGroup] && match.indices[endGroup]) {
+          return [match.indices[startGroup][0], match.indices[endGroup][1]];
+        }
+        const full = match[0];
+        const startPart = match[startGroup];
+        const endPart = match[endGroup];
+        if (startPart == null || endPart == null) return null;
+        const start = full.indexOf(startPart);
+        const end = full.lastIndexOf(endPart);
+        if (start < 0 || end < 0) return null;
+        return [match.index + start, match.index + end + endPart.length];
+      }
+
+      function mergeRanges(ranges) {
+        if (!ranges.length) return [];
+        const sorted = ranges.slice().sort(function (a, b) { return a.start - b.start || a.end - b.end; });
+        const merged = [{ start: sorted[0].start, end: sorted[0].end }];
+        for (let i = 1; i < sorted.length; i++) {
+          const prev = merged[merged.length - 1];
+          if (sorted[i].start <= prev.end) prev.end = Math.max(prev.end, sorted[i].end);
+          else merged.push({ start: sorted[i].start, end: sorted[i].end });
+        }
+        return merged;
+      }
+
+      function subtractRanges(start, end, keeps) {
+        let parts = [[start, end]];
+        for (let i = 0; i < keeps.length; i++) {
+          const keep = keeps[i];
+          if (keep.end <= start || keep.start >= end) continue;
+          const next = [];
+          for (let j = 0; j < parts.length; j++) {
+            const part = parts[j];
+            if (keep.end <= part[0] || keep.start >= part[1]) {
+              next.push(part);
+              continue;
+            }
+            if (keep.start > part[0]) next.push([part[0], keep.start]);
+            if (keep.end < part[1]) next.push([keep.end, part[1]]);
+          }
+          parts = next;
+          if (!parts.length) break;
+        }
+        return parts;
+      }
+
+      function overlaps(list, start, end) {
+        let lo = 0;
+        let hi = list.length;
+        while (lo < hi) {
+          const mid = (lo + hi) >> 1;
+          if (list[mid].start < end) lo = mid + 1;
+          else hi = mid;
+        }
+        return lo > 0 && list[lo - 1].end > start;
+      }
+
+      function insertSpan(list, item) {
+        let lo = 0;
+        let hi = list.length;
+        while (lo < hi) {
+          const mid = (lo + hi) >> 1;
+          if (list[mid].start <= item.start) lo = mid + 1;
+          else hi = mid;
+        }
+        list.splice(lo, 0, item);
+      }
+
+      function allowSource(entry) {
+        if (/^(?:\d{1,3}\.){3}\d{1,3}(?:\/\d{1,2})?$/.test(entry) || (entry.indexOf(':') !== -1 && /^[0-9a-fA-F:%]+$/.test(entry))) {
+          return '(?<![A-Za-z0-9:])' + escapeRegExp(entry) + '(?![A-Za-z0-9:])';
+        }
+        if (/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?)+$/.test(entry)) {
+          return '(?<![A-Za-z0-9-])(?:[A-Za-z0-9-]+\\.)*' + escapeRegExp(entry) + '(?![A-Za-z0-9-])';
+        }
+        const escaped = escapeRegExp(entry);
+        const lead = /^[A-Za-z0-9_]/.test(entry) ? '(?<![A-Za-z0-9_])' : '';
+        const tail = /[A-Za-z0-9_]$/.test(entry) ? '(?![A-Za-z0-9_])' : '';
+        return lead + escaped + tail;
+      }
+
+      function findKeeps(text, allowlist) {
+        const ranges = [];
+        const seen = new Set();
+        const entries = [];
+        const lines = allowlist.split(/\r?\n/);
+        for (let i = 0; i < lines.length; i++) {
+          const entry = lines[i].trim();
+          if (entry.length < 2) continue;
+          const key = entry.toLowerCase();
+          if (seen.has(key)) continue;
+          seen.add(key);
+          entries.push(entry);
+        }
+        entries.sort(function (a, b) { return b.length - a.length; });
+        for (let i = 0; i < entries.length; i++) {
+          let re;
+          try { re = new RegExp(allowSource(entries[i]), 'gi'); }
+          catch (err) { continue; }
+          for (const match of text.matchAll(re)) {
+            ranges.push({ start: match.index, end: match.index + match[0].length });
+          }
+        }
+        return mergeRanges(ranges);
+      }
+
+      function edgeSource(value, whole) {
+        const escaped = escapeRegExp(value);
+        if (!whole) return escaped;
+        const lead = /^[A-Za-z0-9_]/.test(value) ? '(?<![A-Za-z0-9_])' : '';
+        const tail = /[A-Za-z0-9_]$/.test(value) ? '(?![A-Za-z0-9_])' : '';
+        return lead + escaped + tail;
+      }
+
+      function buildRules(options, tlds) {
+        const rules = [];
+        const detectors = options.detectors;
+        function add(enabled, rule) {
+          if (enabled) rules.push(rule);
+        }
+        const label = '[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?';
+        add(detectors.privateKey, {
+          priority: 1, type: 'pkey', stat: 'Private keys', label: '[PRIVATE-KEY]', prefix: 'pkey',
+          re: /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/g
+        });
+        add(detectors.jwt, {
+          priority: 2, type: 'jwt', stat: 'JWTs', label: '[JWT]', prefix: 'jwt',
+          re: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g
+        });
+        add(detectors.aws, {
+          priority: 3, type: 'aws', stat: 'AWS keys', label: '[KEY]', prefix: 'aws',
+          re: /\b(?:AKIA|ASIA|ABIA|ACCA)[A-Z0-9]{16}\b/g
+        });
+        add(detectors.bearer, {
+          priority: 4, type: 'token', stat: 'Bearer tokens', label: '[TOKEN]', prefix: 'token',
+          re: /\bBearer\s+((?=[A-Za-z0-9])[A-Za-z0-9._~+/=-]{8,})/gid,
+          startGroup: 1, endGroup: 1
+        });
+        add(detectors.secret, {
+          priority: 5, type: 'secret', stat: 'Secrets', label: '[SECRET]', prefix: 'secret',
+          re: /\b((?:aws_secret_access_key|client[_-]?secret|api[_-]?key|access[_-]?key|password|passwd|pwd|token|secret|auth)(?![A-Za-z0-9_-])\s*[=:]\s*)(["']?)([^\s"'<>,;&()[\]{}]{3,})\2/gid,
+          startGroup: 3, endGroup: 3
+        });
+        add(detectors.urlCred, {
+          priority: 6, type: 'cred', stat: 'URL credentials', label: '[CRED]', prefix: 'cred',
+          re: /(?<![A-Za-z0-9+.-])([a-z][a-z0-9+.-]*:\/\/)([^/\s:@]+):([^/\s@]+)@/gid,
+          startGroup: 2, endGroup: 3
+        });
+        add(detectors.urlCred, {
+          priority: 7, type: 'cred', stat: 'URL credentials', label: '[CRED]', prefix: 'cred',
+          re: /(?<![A-Za-z0-9+.-])([a-z][a-z0-9+.-]*:\/\/)([^/\s:@]+)@/gid,
+          startGroup: 2, endGroup: 2
+        });
+        add(detectors.email, {
+          priority: 8, type: 'email', stat: 'Emails', label: '[EMAIL]', prefix: 'email',
+          re: /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?![A-Za-z0-9.-])/gi,
+          accept: function (value) {
+            const domain = value.slice(value.lastIndexOf('@') + 1);
+            if (ipv4Literal(domain)) return value.length;
+            return hostnameLength(domain, tlds) === domain.length ? value.length : 0;
+          }
+        });
+        add(detectors.ipv6, {
+          priority: 9, type: 'ipv6', stat: 'IPv6', label: '[IPV6]', prefix: 'ip6',
+          re: /(?<![A-Za-z0-9])[0-9A-Fa-f:.]{2,128}(?:%[A-Za-z0-9][A-Za-z0-9._-]{0,31})?(?![A-Za-z0-9])/g,
+          accept: ipv6PrefixLength
+        });
+        add(detectors.ipv4, {
+          priority: 10, type: 'ipv4', stat: 'IPv4', label: '[IP]', prefix: 'ip',
+          re: new RegExp('(?<![\\w.])(?<![Vv]ersion\\s+)(?<!VERSION\\s+)(?:' + OCTET + '\\.){3}' + OCTET + '(?:\\/(?:3[0-2]|[12]?\\d))?(?![\\w.])', 'g')
+        });
+        add(detectors.mac, {
+          priority: 11, type: 'mac', stat: 'MACs', label: '[MAC]', prefix: 'mac',
+          re: /\b(?:[0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}\b|\b(?:[0-9a-fA-F]{4}\.){2}[0-9a-fA-F]{4}\b/gi
+        });
+        add(detectors.home, {
+          priority: 12, type: 'user', stat: 'Home paths', label: '[USER]', prefix: 'user',
+          re: /(?:\/home\/|\/Users\/|[A-Za-z]:\\Users\\)([A-Za-z0-9._-]{1,64})/gid,
+          startGroup: 1, endGroup: 1
+        });
+        add(detectors.host, {
+          priority: 13, type: 'host', stat: 'Hosts', label: '[HOST]', prefix: 'host',
+          re: new RegExp('(?<![A-Za-z0-9.-])' + label + '(?:\\.' + label + ')+(?![A-Za-z0-9.-])', 'g'),
+          accept: function (value) { return hostnameLength(value, tlds); }
+        });
+
+        const customSeen = new Set();
+        const customLines = options.customStrings.split(/\r?\n/).map(function (line) { return line.trim(); }).filter(Boolean);
+        customLines.sort(function (a, b) { return b.length - a.length; });
+        const flags = (options.customCaseSensitive ? 'g' : 'gi') + 'd';
+        for (let i = 0; i < customLines.length; i++) {
+          const line = customLines[i];
+          const key = options.customCaseSensitive ? line : line.toLowerCase();
+          if (customSeen.has(key)) continue;
+          customSeen.add(key);
+          rules.push({
+            priority: 100 + i,
+            type: 'custom',
+            stat: 'Custom',
+            label: '[CUSTOM]',
+            prefix: 'custom',
+            re: new RegExp(edgeSource(line, options.customWholeWord), flags)
+          });
+        }
+        return rules;
+      }
+
+      function collect(source, rules, keeps) {
+        const candidates = [];
+        for (let r = 0; r < rules.length; r++) {
+          const rule = rules[r];
+          const re = new RegExp(rule.re.source, rule.re.flags);
+          for (const match of source.matchAll(re)) {
+            const located = groupSpan(match, rule.startGroup || 0, rule.endGroup || 0);
+            if (!located) continue;
+            let start = located[0];
+            let end = located[1];
+            if (end <= start || end - start > 1000000) continue;
+            if (rule.accept) {
+              const len = rule.accept(source.slice(start, end));
+              if (!len) continue;
+              end = start + len;
+            }
+            const parts = subtractRanges(start, end, keeps);
+            const untouched = parts.length === 1 && parts[0][0] === start && parts[0][1] === end;
+            for (let p = 0; p < parts.length; p++) {
+              let partStart = parts[p][0];
+              let partEnd = parts[p][1];
+              if (!untouched) {
+                while (partStart < partEnd && !/[A-Za-z0-9]/.test(source.charAt(partStart))) partStart++;
+                while (partEnd > partStart && !/[A-Za-z0-9]/.test(source.charAt(partEnd - 1))) partEnd--;
+              }
+              if (partEnd <= partStart) continue;
+              candidates.push({
+                priority: rule.priority,
+                start: partStart,
+                end: partEnd,
+                type: rule.type,
+                stat: rule.stat,
+                label: rule.label,
+                prefix: rule.prefix,
+                value: source.slice(partStart, partEnd)
+              });
+            }
+          }
+        }
+        candidates.sort(function (a, b) {
+          return a.priority - b.priority || a.start - b.start || b.end - a.end;
+        });
+        const accepted = [];
+        for (let i = 0; i < candidates.length; i++) {
+          if (overlaps(accepted, candidates[i].start, candidates[i].end)) continue;
+          insertSpan(accepted, candidates[i]);
+        }
+        return accepted;
+      }
+
+      return function sanitizeLog(payload) {
+        const options = normalize(payload && payload.options);
+        let source = String(payload && payload.text != null ? payload.text : '');
+        if (source.length > 32000000) throw new Error('Log is too large (limit 32 million characters).');
+        let ansi = 0;
+        if (options.detectors.ansi && source.indexOf('\u001b') !== -1) {
+          source = source.replace(/\u001b(?:\[[0-9;?]*[ -/]*[@-~]|\][^\u0007]*(?:\u0007|\u001b\\))/g, function () {
+            ansi += 1;
+            return '';
+          });
+        }
+        const tlds = new Set(BASE_TLDS);
+        extraTldList(options.extraTlds).forEach(function (item) { tlds.add(item); });
+        const keeps = findKeeps(source, options.allowlist);
+        const accepted = collect(source, buildRules(options, tlds), keeps);
+        const counts = Object.create(null);
+        const aliases = [];
+        const aliasMap = new Map();
+        const seq = Object.create(null);
+        let output = '';
+        let cursor = 0;
+        for (let i = 0; i < accepted.length; i++) {
+          const span = accepted[i];
+          if (span.start < cursor) continue;
+          output += source.slice(cursor, span.start);
+          let token;
+          if (options.mode === 'custom') token = options.replacement;
+          else if (options.mode !== 'alias') token = span.label;
+          else {
+            const fold = span.type === 'host' || span.type === 'email' || span.type === 'mac' || span.type === 'ipv6';
+            const key = span.type + '\0' + (fold ? span.value.toLowerCase() : span.value);
+            token = aliasMap.get(key);
+            if (!token) {
+              seq[span.prefix] = (seq[span.prefix] || 0) + 1;
+              token = span.prefix + '-' + seq[span.prefix];
+              aliasMap.set(key, token);
+              aliases.push({ type: span.type, stat: span.stat, value: span.value, token: token });
+            }
+          }
+          output += token;
+          counts[span.type] = (counts[span.type] || 0) + 1;
+          cursor = span.end;
+        }
+        output += source.slice(cursor);
+        const omitted = source.length > 200000;
+        return {
+          output: output,
+          counts: counts,
+          total: accepted.length,
+          kept: keeps.length,
+          aliases: aliases,
+          ansi: ansi,
+          omitted: omitted,
+          source: omitted ? '' : source,
+          spans: omitted ? [] : accepted.map(function (span) {
+            return { start: span.start, end: span.end, type: span.type, stat: span.stat };
+          })
+        };
+      };
+    })();
+  </script>
+  <script id="ui">
+    const STORE_KEY = 'log-sanitizer-settings-v1';
+    const STAT_LABELS = {
+      total: 'Redactions', alias: 'Unique aliases', kept: 'Allowlist', ansi: 'ANSI',
+      ipv4: 'IPv4', ipv6: 'IPv6', host: 'Hosts', email: 'Emails', mac: 'MACs',
+      jwt: 'JWTs', token: 'Bearer', secret: 'Secrets', aws: 'AWS keys', pkey: 'Private keys',
+      user: 'Home paths', cred: 'URL logins', custom: 'Custom'
+    };
+    const SAMPLE = [
+      '2024-10-02T09:14:22Z foreman[2412]: out-of-memory while reading error.log (Node.js worker)',
+      'unit=foreman.service host=prod-db-01.internal name=acme-west',
+      'login ok user=ada@corp.example.com src=10.8.0.14,2001:db8:1::20',
+      'GET https://deploy:s3cret@api.internal.example.net/v1/ping',
+      'version 1.2.3.4 and v1.2.3.4',
+      'mac=00:1A:2B:3C:4D:5E',
+      'password=hunter2 token=supersecret123',
+      'password="quoted-secret"',
+      'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U',
+      'Authorization: Bearer opaqueTokenValue123',
+      'aws_access_key_id=AKIAIOSFODNN7EXAMPLE',
+      'aws_secret_access_key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
+      'opened /home/sadas/app/config.yaml and C:\\Users\\Ada\\profile',
+      '::1 healthcheck from fe80::1',
+      '-----BEGIN OPENSSH PRIVATE KEY-----',
+      'b3BlbnNzaC1rZXkAAAAAAA',
+      '-----END OPENSSH PRIVATE KEY-----'
+    ].join('\n');
+
+    const input = document.getElementById('input');
+    const output = document.getElementById('output');
+    const form = document.getElementById('app');
+    const preview = document.getElementById('preview');
+    const stats = document.getElementById('stats');
+    const runState = document.getElementById('runState');
+    const toastEl = document.getElementById('toast');
+    const progress = document.getElementById('progress');
+    const cleanBtn = document.getElementById('cleanBtn');
+    const fileInput = document.getElementById('fileInput');
+    const fileMeta = document.getElementById('fileMeta');
+    const inCount = document.getElementById('inCount');
+    const outCount = document.getElementById('outCount');
+    const mapBody = document.getElementById('mapBody');
+    const mapEmpty = document.getElementById('mapEmpty');
+    const mapWrap = document.getElementById('mapWrap');
+    const mapMeta = document.getElementById('mapMeta');
+    const copyBtn = document.getElementById('copyBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const copyMapBtn = document.getElementById('copyMapBtn');
+    const kbd = document.getElementById('kbd');
+    const themeBtn = document.getElementById('themeBtn');
+    const dropZone = document.getElementById('dropZone');
+    const liveBox = document.getElementById('live');
+
+    let fileName = '';
+    let lastAliases = [];
+    let activeRid = 0;
+    let worker = null;
+    let workerUrl = '';
+    let toastTimer = 0;
+    let liveTimer = 0;
+    let liveWarned = false;
+    const initialState = 'Paste a log, then clean it.';
+
+    function toast(message) {
+      toastEl.textContent = message;
+      toastEl.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, 2600);
+    }
+
+    function readStore() {
+      try { return JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); }
+      catch (err) { return null; }
+    }
+
+    function writeStore(data) {
+      try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); }
+      catch (err) {}
+    }
+
+    function readOptions() {
+      const detectors = {};
+      document.querySelectorAll('[data-detector]').forEach(function (box) {
+        detectors[box.dataset.detector] = box.checked;
+      });
+      const selected = document.querySelector('input[name="mode"]:checked');
+      return {
+        detectors: detectors,
+        mode: selected ? selected.value : 'typed',
+        replacement: document.getElementById('replacement').value,
+        customStrings: document.getElementById('custom').value,
+        customWholeWord: document.getElementById('whole').checked,
+        customCaseSensitive: document.getElementById('caseSens').checked,
+        allowlist: document.getElementById('allow').value,
+        extraTlds: document.getElementById('tlds').value
+      };
+    }
+
+    function saveSettings() {
+      const previous = readStore() || {};
+      writeStore(Object.assign({}, readOptions(), {
+        theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light',
+        live: liveBox.checked,
+        savedAt: previous.savedAt
+      }));
+    }
+
+    function loadSettings() {
+      const saved = readStore();
+      if (!saved) return;
+      if (saved.detectors) {
+        document.querySelectorAll('[data-detector]').forEach(function (box) {
+          if (Object.prototype.hasOwnProperty.call(saved.detectors, box.dataset.detector)) {
+            box.checked = !!saved.detectors[box.dataset.detector];
+          }
+        });
+      }
+      if (saved.mode) {
+        const radio = document.querySelector('input[name="mode"][value="' + saved.mode + '"]');
+        if (radio) radio.checked = true;
+      }
+      if (typeof saved.replacement === 'string') document.getElementById('replacement').value = saved.replacement;
+      if (typeof saved.customStrings === 'string') document.getElementById('custom').value = saved.customStrings;
+      if (typeof saved.allowlist === 'string') document.getElementById('allow').value = saved.allowlist;
+      if (typeof saved.extraTlds === 'string') document.getElementById('tlds').value = saved.extraTlds;
+      if (typeof saved.customWholeWord === 'boolean') document.getElementById('whole').checked = saved.customWholeWord;
+      if (typeof saved.customCaseSensitive === 'boolean') document.getElementById('caseSens').checked = saved.customCaseSensitive;
+      if (typeof saved.live === 'boolean') liveBox.checked = saved.live;
+    }
+
+    function syncMode() {
+      const mode = document.querySelector('input[name="mode"]:checked').value;
+      document.getElementById('replacementField').classList.toggle('is-off', mode !== 'custom');
+      document.getElementById('replacement').disabled = mode !== 'custom';
+    }
+
+    function syncThemeIcon() {
+      const dark = document.documentElement.classList.contains('dark');
+      themeBtn.setAttribute('aria-pressed', dark ? 'true' : 'false');
+      themeBtn.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
+      themeBtn.innerHTML = dark
+        ? '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M21 14.5A8.5 8.5 0 0 1 9.5 3 7 7 0 1 0 21 14.5z"/></svg>'
+        : '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/><path stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M4.8 4.8l1.6 1.6M17.6 17.6l1.6 1.6M19.2 4.8l-1.6 1.6M6.4 17.6l-1.6 1.6"/></svg>';
+    }
+
+    function formatBytes(size) {
+      if (size < 1024) return size + ' B';
+      if (size < 1048576) return (size / 1024).toFixed(1) + ' KB';
+      return (size / 1048576).toFixed(1) + ' MB';
+    }
+
+    function countText(text) {
+      if (!text) return 'Empty';
+      const lines = text.split('\n').length;
+      return lines.toLocaleString() + ' lines · ' + text.length.toLocaleString() + ' chars';
+    }
+
+    function cleanedName(name) {
+      const safe = String(name || '').replace(/[/\\]/g, '').replace(/^\.+/, '');
+      if (!safe) return 'cleaned_logs.txt';
+      const dot = safe.lastIndexOf('.');
+      if (dot > 0) return safe.slice(0, dot) + '.cleaned' + safe.slice(dot);
+      return safe + '.cleaned.txt';
+    }
+
+    function setBusy(on) {
+      cleanBtn.disabled = on;
+      cleanBtn.querySelector('.label').textContent = on ? 'Cleaning…' : 'Clean log';
+      progress.classList.toggle('on', on);
+      form.setAttribute('aria-busy', on ? 'true' : 'false');
+    }
+
+    function syncActionState() {
+      const hasOutput = !!output.value;
+      copyBtn.disabled = !hasOutput;
+      downloadBtn.disabled = !hasOutput;
+      copyMapBtn.disabled = !lastAliases.length;
+    }
+
+    function activateTab(name) {
+      document.querySelectorAll('[role="tab"]').forEach(function (tab) {
+        const on = tab.dataset.tab === name;
+        tab.setAttribute('aria-selected', on ? 'true' : 'false');
+        document.getElementById(tab.getAttribute('aria-controls')).hidden = !on;
+      });
+    }
+
+    function renderHighlights(source, spans) {
+      if (!source) {
+        preview.textContent = 'Clean a log to highlight what will be removed.';
+        return;
+      }
+      if (!spans.length) {
+        preview.textContent = source;
+        return;
+      }
+      const fragment = document.createDocumentFragment();
+      let cursor = 0;
+      spans.forEach(function (span) {
+        if (span.start < cursor) return;
+        fragment.append(document.createTextNode(source.slice(cursor, span.start)));
+        const mark = document.createElement('mark');
+        mark.className = 'hl hl-' + span.type;
+        mark.title = span.stat;
+        mark.textContent = source.slice(span.start, span.end);
+        fragment.append(mark);
+        cursor = span.end;
+      });
+      fragment.append(document.createTextNode(source.slice(cursor)));
+      preview.replaceChildren(fragment);
+    }
+
+    function renderMap(aliases) {
+      mapBody.replaceChildren();
+      mapMeta.textContent = '';
+      if (!aliases.length) {
+        mapEmpty.hidden = false;
+        mapWrap.hidden = true;
+        const mode = document.querySelector('input[name="mode"]:checked').value;
+        mapEmpty.textContent = mode === 'alias'
+          ? 'No values were redacted.'
+          : 'Switch replacement to Stable aliases to build a map. The download never includes it.';
+        return;
+      }
+      mapEmpty.hidden = true;
+      mapWrap.hidden = false;
+      const shown = aliases.slice(0, 300);
+      shown.forEach(function (row) {
+        const tr = document.createElement('tr');
+        [row.token, row.stat, row.value].forEach(function (value, index) {
+          const cell = document.createElement('td');
+          if (index === 2) cell.className = 'value';
+          cell.textContent = value;
+          tr.append(cell);
+        });
+        mapBody.append(tr);
+      });
+      if (aliases.length > shown.length) {
+        mapMeta.textContent = 'Showing ' + shown.length + ' of ' + aliases.length + '. Copy alias map still includes every row.';
+      }
+    }
+
+    function renderStats(result) {
+      stats.replaceChildren();
+      const rows = [];
+      if (result.total) rows.push(['total', result.total]);
+      Object.keys(STAT_LABELS).forEach(function (type) {
+        if (result.counts && result.counts[type]) rows.push([type, result.counts[type]]);
+      });
+      if (result.aliases && result.aliases.length) rows.push(['alias', result.aliases.length]);
+      if (result.kept) rows.push(['kept', result.kept]);
+      if (result.ansi) rows.push(['ansi', result.ansi]);
+      if (!rows.length) {
+        stats.hidden = true;
+        return;
+      }
+      stats.hidden = false;
+      rows.forEach(function (row) {
+        const el = document.createElement('span');
+        el.className = 'pill';
+        el.dataset.type = row[0];
+        const dot = document.createElement('i');
+        const text = document.createElement('span');
+        text.textContent = (STAT_LABELS[row[0]] || row[0]) + ' · ' + row[1];
+        el.append(dot, text);
+        stats.append(el);
+      });
+    }
+
+    function render(result, elapsed, reason) {
+      output.value = result.output;
+      outCount.textContent = countText(result.output);
+      lastAliases = result.aliases || [];
+      if (result.omitted) {
+        preview.textContent = 'Match preview is hidden above 200,000 characters. The cleaned output is still complete.';
+      } else {
+        renderHighlights(result.source || '', result.spans || []);
+      }
+      renderMap(lastAliases);
+      renderStats(result);
+      const ms = Math.max(1, Math.round(elapsed));
+      let message = result.total
+        ? 'Redacted ' + result.total + (result.total === 1 ? ' value' : ' values') + ' in ' + ms + ' ms'
+        : 'No sensitive values found (' + ms + ' ms)';
+      if (result.ansi) message += ' · stripped ' + result.ansi + ' ANSI sequences';
+      runState.textContent = message;
+      syncActionState();
+      if (reason !== 'live') activateTab('clean');
+    }
+
+    function clearOutput() {
+      output.value = '';
+      outCount.textContent = 'Empty';
+      lastAliases = [];
+      preview.textContent = 'Clean a log to highlight what will be removed.';
+      renderMap([]);
+      stats.hidden = true;
+      stats.replaceChildren();
+      runState.textContent = initialState;
+      syncActionState();
+    }
+
+    function workerSource() {
+      return document.getElementById('engine').textContent + '\nself.onmessage = function (e) {\n  try { self.postMessage({ ok: true, rid: e.data.rid, result: sanitizeLog(e.data) }); }\n  catch (err) { self.postMessage({ ok: false, rid: e.data.rid, error: String(err && err.message || err) }); }\n};\n';
+    }
+
+    function execute(text, reason) {
+      if (worker) {
+        worker.terminate();
+        worker = null;
+      }
+      if (!String(text || '').trim()) {
+        toast('Paste a log or drop a file first.');
+        input.focus();
+        return;
+      }
+      const rid = ++activeRid;
+      const payload = { text: text, options: readOptions(), rid: rid };
+      const started = performance.now();
+      setBusy(true);
+      function finish(message) {
+        if (message.rid !== activeRid) return;
+        setBusy(false);
+        if (!message.ok) {
+          toast(message.error || 'Cleaning failed.');
+          return;
+        }
+        render(message.result, performance.now() - started, reason);
+      }
+      if (text.length >= 80000 && window.Worker) {
+        try {
+          if (!workerUrl) {
+            workerUrl = URL.createObjectURL(new Blob([workerSource()], { type: 'text/javascript' }));
+          }
+          worker = new Worker(workerUrl);
+          worker.onmessage = function (event) { finish(event.data); };
+          worker.onerror = function () { finish({ ok: false, rid: rid, error: 'Cleaning failed.' }); };
+          worker.postMessage(payload);
+          return;
+        } catch (err) {
+          worker = null;
+        }
+      }
+      setTimeout(function () {
+        try { finish({ ok: true, rid: rid, result: sanitizeLog(payload) }); }
+        catch (err) { finish({ ok: false, rid: rid, error: err.message || String(err) }); }
+      }, 16);
+    }
+
+    function scheduleLive() {
+      if (!liveBox.checked) return;
+      clearTimeout(liveTimer);
+      liveTimer = setTimeout(function () {
+        if (!liveBox.checked) return;
+        if (!input.value.trim()) {
+          clearOutput();
+          return;
+        }
+        if (input.value.length > 300000) {
+          if (!liveWarned) {
+            toast('Live update stays off for logs this large. Use Clean log.');
+            liveWarned = true;
+          }
+          return;
+        }
+        execute(input.value, 'live');
+      }, 350);
+    }
+
+    async function copyText(text) {
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+          return true;
+        }
+      } catch (err) {}
+      const area = document.createElement('textarea');
+      area.value = text;
+      area.setAttribute('readonly', '');
+      area.style.position = 'fixed';
+      area.style.left = '-9999px';
+      document.body.append(area);
+      area.select();
+      let ok = false;
+      try { ok = document.execCommand('copy'); }
+      catch (err) { ok = false; }
+      area.remove();
+      return ok;
+    }
+
+    function readFile(file) {
+      if (!file) return;
+      if (file.size > 32 * 1024 * 1024) {
+        toast('That file is over 32 MB.');
+        fileInput.value = '';
+        return;
+      }
+      if (/^(image|video|audio)\//.test(file.type) || file.type === 'application/pdf') {
+        toast('Choose a text log, not a binary file.');
+        fileInput.value = '';
+        return;
+      }
+      fileName = file.name;
+      fileMeta.textContent = file.name + ' · ' + formatBytes(file.size);
+      progress.classList.add('on');
+      const reader = new FileReader();
+      reader.onerror = function () {
+        progress.classList.remove('on');
+        toast('Could not read that file.');
+        fileInput.value = '';
+      };
+      reader.onload = function () {
+        progress.classList.remove('on');
+        const text = String(reader.result || '');
+        fileInput.value = '';
+        if (text.indexOf('\u0000') !== -1) toast('This file looks binary. The cleaned text may be unusable.');
+        input.value = text;
+        inCount.textContent = countText(text);
+        execute(text, 'submit');
+      };
+      reader.readAsText(file);
+    }
+
+    kbd.textContent = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘ Enter' : 'Ctrl Enter';
+    loadSettings();
+    syncMode();
+    syncThemeIcon();
+    syncActionState();
+
+    themeBtn.addEventListener('click', function () {
+      document.documentElement.classList.toggle('dark');
+      syncThemeIcon();
+      saveSettings();
+    });
+
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      execute(input.value, 'submit');
+    });
+
+    form.addEventListener('change', function () {
+      saveSettings();
+      syncMode();
+      scheduleLive();
+    });
+
+    form.addEventListener('input', function (event) {
+      if (event.target === input) {
+        inCount.textContent = countText(input.value);
+        scheduleLive();
+        return;
+      }
+      saveSettings();
+      scheduleLive();
+    });
+
+    document.getElementById('browseBtn').addEventListener('click', function () { fileInput.click(); });
+    fileInput.addEventListener('change', function () {
+      if (fileInput.files && fileInput.files[0]) readFile(fileInput.files[0]);
+    });
+    document.getElementById('sampleBtn').addEventListener('click', function () {
+      fileName = 'sample.log';
+      fileMeta.textContent = 'sample.log';
+      input.value = SAMPLE;
+      inCount.textContent = countText(SAMPLE);
+      execute(SAMPLE, 'submit');
+    });
+    document.getElementById('clearBtn').addEventListener('click', function () {
+      input.value = '';
+      fileName = '';
+      fileInput.value = '';
+      fileMeta.textContent = 'No file loaded';
+      inCount.textContent = 'Empty';
+      clearOutput();
+      toast('Logs cleared. Settings were kept.');
+    });
+    document.getElementById('resetBtn').addEventListener('click', function () {
+      const theme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+      document.querySelectorAll('[data-detector]').forEach(function (box) {
+        box.checked = box.dataset.detector !== 'ansi';
+      });
+      document.querySelector('input[name="mode"][value="typed"]').checked = true;
+      document.getElementById('replacement').value = '[REDACTED]';
+      document.getElementById('custom').value = '';
+      document.getElementById('allow').value = '';
+      document.getElementById('tlds').value = '';
+      document.getElementById('whole').checked = true;
+      document.getElementById('caseSens').checked = false;
+      liveBox.checked = false;
+      syncMode();
+      saveSettings();
+      writeStore(Object.assign(readStore() || {}, { theme: theme }));
+      toast('Settings reset.');
+    });
+
+    copyBtn.addEventListener('click', async function () {
+      if (!output.value) return;
+      toast(await copyText(output.value) ? 'Cleaned log copied.' : 'Copy failed in this browser.');
+    });
+    copyMapBtn.addEventListener('click', async function () {
+      if (!lastAliases.length) return;
+      const text = lastAliases.map(function (row) {
+        return row.token + '\t' + row.stat + '\t' + row.value;
+      }).join('\n');
+      toast(await copyText(text) ? 'Alias map copied. It contains the original secrets.' : 'Copy failed in this browser.');
+    });
+    downloadBtn.addEventListener('click', function () {
+      if (!output.value) return;
+      const name = cleanedName(fileName);
+      const url = URL.createObjectURL(new Blob([output.value], { type: 'text/plain;charset=utf-8' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = name;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      toast('Downloaded ' + name);
+    });
+
+    document.querySelectorAll('[role="tab"]').forEach(function (tab) {
+      tab.addEventListener('click', function () { activateTab(tab.dataset.tab); });
+    });
+
+    document.addEventListener('keydown', function (event) {
+      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+        event.preventDefault();
+        form.requestSubmit();
+      }
+    });
+
+    ['dragenter', 'dragover'].forEach(function (name) {
+      dropZone.addEventListener(name, function (event) {
+        if (!event.dataTransfer || ![...event.dataTransfer.types].includes('Files')) return;
+        event.preventDefault();
+        dropZone.classList.add('dragover');
+      });
+    });
+    dropZone.addEventListener('dragleave', function (event) {
+      if (!dropZone.contains(event.relatedTarget)) dropZone.classList.remove('dragover');
+    });
+    dropZone.addEventListener('drop', function (event) {
+      if (!event.dataTransfer || ![...event.dataTransfer.types].includes('Files')) return;
+      event.preventDefault();
+      dropZone.classList.remove('dragover');
+      if (event.dataTransfer.files[0]) readFile(event.dataTransfer.files[0]);
+    });
+    window.addEventListener('dragover', function (event) {
+      if (event.dataTransfer && [...event.dataTransfer.types].includes('Files')) event.preventDefault();
+    });
+    window.addEventListener('drop', function (event) {
+      if (event.dataTransfer && [...event.dataTransfer.types].includes('Files')) event.preventDefault();
+    });
+  </script>
+</body>
+</html>
